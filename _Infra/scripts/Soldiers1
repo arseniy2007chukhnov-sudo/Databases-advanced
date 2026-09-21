@@ -1,0 +1,20 @@
+-- ddl
+create table soldiers
+(
+	name text,
+	rank text
+);
+
+-- dml
+select * from soldiers
+where 
+	rank like '%т%ержант'
+	or
+	rank = 'Старш'
+
+insert into soldiers(name, rank) values('Иванов Иван Иванович', 'Сержант');
+insert into soldiers(name, rank) values('Иванов Иван Иванович', 'Мл / Сержант');
+insert into soldiers(name, rank) values('Иванов Иван Иванович', 'Лейтенант');
+
+insert into soldiers(name, rank) values('Иванов Иван Иванович', 'Ст / Сержант');
+insert into soldiers(name, rank) values('Иванов Иван Иванович', 'Старший Сержант');

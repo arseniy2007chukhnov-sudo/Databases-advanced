@@ -1,0 +1,153 @@
+-- 1. Удаление старой структуры параметров -- DDL
+
+DROP TABLE parametry;
+DROP TABLE bazovye_edinicy_izmereniya;	--|
+DROP TABLE edinicy_izmereniya;			--| Для рестарта текущего кода
+DROP TABLE tipy_parametrov;				--|
+
+-- 2. Справочники -- DDL
+
+ 
+-- 2.1 Базовые единицы измерения (физическая величина: длина, температура и т.д.)
+
+CREATE TABLE bazovye_edinicy_izmereniya (
+    id INTEGER NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    CONSTRAINT pk_bazovye_edinicy_izmereniya PRIMARY KEY (id)
+);
+ 
+-- 2.2 Единицы измерения (метр, градус Цельсия, мм рт.ст. и т.д.) 
+
+CREATE TABLE edinicy_izmereniya (
+    id INTEGER NOT NULL,
+    bazovaya_edinica_id INTEGER NOT NULL,
+    short_name VARCHAR(20) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    CONSTRAINT pk_edinicy_izmereniya PRIMARY KEY (id),
+    CONSTRAINT fk_edinicy_izmereniya_bazovaya FOREIGN KEY (bazovaya_edinica_id)
+        REFERENCES bazovye_edinicy_izmereniya (id)
+);
+ 
+-- 2.3 Типы параметров (высота, температура, давление, направление и
+--     скорость ветра, дальность сноса пуль)
+
+CREATE TABLE tipy_parametrov (
+    id INTEGER NOT NULL,
+    edinica_izmereniya_id INTEGER NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    CONSTRAINT pk_tipy_parametrov PRIMARY KEY (id),
+    CONSTRAINT fk_tipy_parametrov_edinica FOREIGN KEY (edinica_izmereniya_id)
+        REFERENCES edinicy_izmereniya (id)
+);
+
+ 
+-- 3. Новая таблица параметров -- DDL
+--    Связка: пачка (parametry.pachka_id) <-> тип параметра <-> значение
+
+CREATE TABLE parametry (
+    id INTEGER NOT NULL,
+    pachka_id INTEGER NOT NULL,
+    tip_parametra_id INTEGER NOT NULL,
+    value DECIMAL(8,2) NOT NULL,
+    CONSTRAINT pk_parametry PRIMARY KEY (id),
+    CONSTRAINT uq_parametry_pachka_tip UNIQUE (pachka_id, tip_parametra_id),
+    CONSTRAINT fk_parametry_pachka FOREIGN KEY (pachka_id)
+        REFERENCES pachki (id),
+    CONSTRAINT fk_parametry_tip_parametra FOREIGN KEY (tip_parametra_id)
+        REFERENCES tipy_parametrov (id)
+);
+ 
+
+-- 4. Замена тестовых данных
+
+DELETE FROM pachki;
+DELETE FROM polzovateli;
+DELETE FROM tipy_oborudovaniya;
+DELETE FROM dolzhnosti;
+ 
+INSERT INTO dolzhnosti (id, uniq_code, name) VALUES (1, 'DLZ-001', 'Рядовой');
+INSERT INTO dolzhnosti (id, uniq_code, name) VALUES (2, 'DLZ-002', 'Лейтенант');
+ 
+INSERT INTO tipy_oborudovaniya (id, uniq_code, name)
+    VALUES (1, 'TIP-001', 'ДМК (Десантный метео комплекс)');
+INSERT INTO tipy_oborudovaniya (id, uniq_code, name)
+    VALUES (2, 'TIP-002', 'ВР (Ветровое ружье)');
+ 
+INSERT INTO polzovateli (id, uniq_code, full_name, dolzhnost_id)
+    VALUES (1, 'USR-001', 'Воловиков Александр Сергеевич', 2);
+ 
+INSERT INTO pachki (id, uniq_code, tip_oborudovaniya_id, polzovatel_id, quantity, created_date)
+    VALUES (1, 'PCH-001', 1, 1, 1, DATE '2026-09-01');
+INSERT INTO pachki (id, uniq_code, tip_oborudovaniya_id, polzovatel_id, quantity, created_date)
+    VALUES (2, 'PCH-002', 2, 1, 1, DATE '2026-09-02');
+
+
+-- 5. Заполнение справочников типовыми данными -- DML
+ 
+INSERT INTO bazovye_edinicy_izmereniya (id, name) VALUES (1, 'Длина');
+INSERT INTO bazovye_edinicy_izmereniya (id, name) VALUES (2, 'Температура');
+INSERT INTO bazovye_edinicy_izmereniya (id, name) VALUES (3, 'Давление');
+INSERT INTO bazovye_edinicy_izmereniya (id, name) VALUES (4, 'Угол');
+INSERT INTO bazovye_edinicy_izmereniya (id, name) VALUES (5, 'Скорость');
+ 
+INSERT INTO edinicy_izmereniya (id, bazovaya_edinica_id, short_name, name)
+    VALUES (1, 1, 'м', 'Метр');
+INSERT INTO edinicy_izmereniya (id, bazovaya_edinica_id, short_name, name)
+    VALUES (2, 2, 'C', 'Градус Цельсия');
+INSERT INTO edinicy_izmereniya (id, bazovaya_edinica_id, short_name, name)
+    VALUES (3, 3, 'мм рт.ст.', 'Миллиметр ртутного столба');
+INSERT INTO edinicy_izmereniya (id, bazovaya_edinica_id, short_name, name)
+    VALUES (4, 4, 'д.у.', 'Деление угломера');
+INSERT INTO edinicy_izmereniya (id, bazovaya_edinica_id, short_name, name)
+    VALUES (5, 5, 'м/с', 'Метр в секунду');
+ 
+INSERT INTO tipy_parametrov (id, edinica_izmereniya_id, name) VALUES (1, 1, 'Высота');
+INSERT INTO tipy_parametrov (id, edinica_izmereniya_id, name) VALUES (2, 2, 'Температура');
+INSERT INTO tipy_parametrov (id, edinica_izmereniya_id, name) VALUES (3, 3, 'Давление');
+INSERT INTO tipy_parametrov (id, edinica_izmereniya_id, name) VALUES (4, 4, 'Направление ветра');
+INSERT INTO tipy_parametrov (id, edinica_izmereniya_id, name) VALUES (5, 5, 'Скорость ветра');
+INSERT INTO tipy_parametrov (id, edinica_izmereniya_id, name) VALUES (6, 1, 'Дальность сноса пуль');
+ 
+
+-- 6. Тестовые данные параметров -- DML
+--    Пачка 1 (оборудование ДМК): высота, температура, давление,
+--    направление и скорость ветра.
+--    Пачка 2 (оборудование ВР): высота, температура, давление,
+--    направление ветра и дальность сноса пуль.
+
+ 
+INSERT INTO parametry (id, pachka_id, tip_parametra_id, value) VALUES (1, 1, 1, 100.00);
+INSERT INTO parametry (id, pachka_id, tip_parametra_id, value) VALUES (2, 1, 2, 12.00);
+INSERT INTO parametry (id, pachka_id, tip_parametra_id, value) VALUES (3, 1, 3, 34.00);
+INSERT INTO parametry (id, pachka_id, tip_parametra_id, value) VALUES (4, 1, 4, 0.20);
+INSERT INTO parametry (id, pachka_id, tip_parametra_id, value) VALUES (5, 1, 5, 45.00);
+ 
+INSERT INTO parametry (id, pachka_id, tip_parametra_id, value) VALUES (6, 2, 1, 80.00);
+INSERT INTO parametry (id, pachka_id, tip_parametra_id, value) VALUES (7, 2, 2, 10.00);
+INSERT INTO parametry (id, pachka_id, tip_parametra_id, value) VALUES (8, 2, 3, 745.00);
+INSERT INTO parametry (id, pachka_id, tip_parametra_id, value) VALUES (9, 2, 4, 5.00);
+INSERT INTO parametry (id, pachka_id, tip_parametra_id, value) VALUES (10, 2, 6, 120.00);
+ 
+
+-- 7. Основной запрос
+--    Дата измерения | Номер пачки | ФИО сотрудника |
+--    Наименование параметра и ед. измерения | Значение
+
+SELECT
+    p.created_date                          AS "Дата измерения",
+    p.id                                     AS "Номер пачки",
+    u.full_name                             AS "ФИО сотрудника",
+    tp.name || ' (' || ei.short_name || ')' AS "Параметр и ед. измерения",
+    par.value                               AS "Значение"
+FROM pachki p
+    INNER JOIN polzovateli u
+        ON u.id = p.polzovatel_id
+    INNER JOIN parametry par
+        ON par.pachka_id = p.id
+    INNER JOIN tipy_parametrov tp
+        ON tp.id = par.tip_parametra_id
+    INNER JOIN edinicy_izmereniya ei
+        ON ei.id = tp.edinica_izmereniya_id
+ORDER BY
+    p.created_date, p.id, tp.id;
+ 

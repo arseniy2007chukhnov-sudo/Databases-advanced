@@ -1,0 +1,111 @@
+DROP TABLE IF EXISTS pachki;
+DROP TABLE IF EXISTS parametry;
+DROP TABLE IF EXISTS polzovateli;
+DROP TABLE IF EXISTS tipy_oborudovaniya;
+DROP TABLE IF EXISTS dolzhnosti;
+
+-- Должности
+CREATE TABLE dolzhnosti (
+    id INTEGER NOT NULL,
+    uniq_code VARCHAR(20) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    CONSTRAINT pk_dolzhnosti PRIMARY KEY (id),
+    CONSTRAINT uq_dolzhnosti_code UNIQUE (uniq_code)
+);
+ 
+-- Типы оборудования
+CREATE TABLE tipy_oborudovaniya (
+    id INTEGER NOT NULL,
+    uniq_code VARCHAR(20) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    CONSTRAINT pk_tipy_oborudovaniya PRIMARY KEY (id),
+    CONSTRAINT uq_tipy_oborudovaniya_code UNIQUE (uniq_code)
+);
+ 
+-- Пользователи (ссылаются на должность)
+CREATE TABLE polzovateli (
+    id INTEGER NOT NULL,
+    uniq_code VARCHAR(20) NOT NULL,
+    full_name VARCHAR(150) NOT NULL,
+    dolzhnost_id INTEGER NOT NULL,
+    CONSTRAINT pk_polzovateli PRIMARY KEY (id),
+    CONSTRAINT uq_polzovateli_code UNIQUE (uniq_code),
+    CONSTRAINT fk_polzovateli_dolzhnost FOREIGN KEY (dolzhnost_id)
+        REFERENCES dolzhnosti (id)
+);
+ 
+-- Параметры (характеристики конкретного типа оборудования)
+CREATE TABLE parametry (
+    id INTEGER NOT NULL,
+    uniq_code VARCHAR(20) NOT NULL,
+    tip_oborudovaniya_id INTEGER NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    value VARCHAR(100) NOT NULL,
+    CONSTRAINT pk_parametry PRIMARY KEY (id),
+    CONSTRAINT uq_parametry_code UNIQUE (uniq_code),
+    CONSTRAINT fk_parametry_tip FOREIGN KEY (tip_oborudovaniya_id)
+        REFERENCES tipy_oborudovaniya (id)
+);
+ 
+-- Пачки (партии оборудования, принятые/выданные пользователем)
+CREATE TABLE pachki (
+    id INTEGER NOT NULL,
+    uniq_code VARCHAR(20) NOT NULL,
+    tip_oborudovaniya_id INTEGER NOT NULL,
+    polzovatel_id INTEGER NOT NULL,
+    quantity INTEGER NOT NULL,
+    created_date DATE NOT NULL,
+    CONSTRAINT pk_pachki PRIMARY KEY (id),
+    CONSTRAINT uq_pachki_code UNIQUE (uniq_code),
+    CONSTRAINT ck_pachki_quantity CHECK (quantity > 0),
+    CONSTRAINT fk_pachki_tip FOREIGN KEY (tip_oborudovaniya_id)
+        REFERENCES tipy_oborudovaniya (id),
+    CONSTRAINT fk_pachki_polzovatel FOREIGN KEY (polzovatel_id)
+        REFERENCES polzovateli (id)
+);
+
+-- Должности
+INSERT INTO dolzhnosti (id, uniq_code, name) VALUES (1, 'DLZ-001', 'Кладовщик');
+INSERT INTO dolzhnosti (id, uniq_code, name) VALUES (2, 'DLZ-002', 'Инженер');
+INSERT INTO dolzhnosti (id, uniq_code, name) VALUES (3, 'DLZ-003', 'Начальник склада');
+ 
+-- Типы оборудования
+INSERT INTO tipy_oborudovaniya (id, uniq_code, name) VALUES (1, 'TIP-001', 'Ноутбук');
+INSERT INTO tipy_oborudovaniya (id, uniq_code, name) VALUES (2, 'TIP-002', 'Монитор');
+INSERT INTO tipy_oborudovaniya (id, uniq_code, name) VALUES (3, 'TIP-003', 'Принтер');
+ 
+-- Пользователи
+INSERT INTO polzovateli (id, uniq_code, full_name, dolzhnost_id) VALUES (1, 'USR-001', 'Иванов Иван Иванович',   1);
+INSERT INTO polzovateli (id, uniq_code, full_name, dolzhnost_id) VALUES (2, 'USR-002', 'Петров Пётр Петрович',   2);
+INSERT INTO polzovateli (id, uniq_code, full_name, dolzhnost_id) VALUES (3, 'USR-003', 'Сидорова Анна Сергеевна', 3);
+ 
+-- Параметры
+INSERT INTO parametry (id, uniq_code, tip_oborudovaniya_id, name, value) VALUES (1, 'PAR-001', 1, 'Диагональ экрана', '15.6"');
+INSERT INTO parametry (id, uniq_code, tip_oborudovaniya_id, name, value) VALUES (2, 'PAR-002', 1, 'Объём ОЗУ',        '16 ГБ');
+INSERT INTO parametry (id, uniq_code, tip_oborudovaniya_id, name, value) VALUES (3, 'PAR-003', 2, 'Разрешение',       '2560x1440');
+INSERT INTO parametry (id, uniq_code, tip_oborudovaniya_id, name, value) VALUES (4, 'PAR-004', 3, 'Тип печати',       'Лазерная');
+ 
+-- Пачки
+INSERT INTO pachki (id, uniq_code, tip_oborudovaniya_id, polzovatel_id, quantity, created_date) VALUES (1, 'PCH-001', 1, 1, 10, '2026-09-01');
+INSERT INTO pachki (id, uniq_code, tip_oborudovaniya_id, polzovatel_id, quantity, created_date) VALUES (2, 'PCH-002', 2, 2, 5,  '2026-09-05');
+INSERT INTO pachki (id, uniq_code, tip_oborudovaniya_id, polzovatel_id, quantity, created_date) VALUES (3, 'PCH-003', 3, 3, 2,  '2026-09-10');
+ 
+SELECT
+    p.uniq_code AS pachka_code,
+    t.uniq_code AS tip_code,
+    t.name AS tip_oborudovaniya,
+    par.uniq_code AS param_code,
+    par.name AS parametr,
+    par.value AS znachenie,
+    u.uniq_code AS user_code,
+    u.full_name AS polzovatel,
+    d.uniq_code AS dolzhnost_code,
+    d.name AS dolzhnost,
+    p.quantity AS kolichestvo,
+    p.created_date AS data_partii
+FROM pachki AS p
+JOIN tipy_oborudovaniya AS t ON p.tip_oborudovaniya_id = t.id
+JOIN polzovateli AS u ON p.polzovatel_id = u.id
+JOIN dolzhnosti AS d ON u.dolzhnost_id = d.id
+JOIN parametry AS par ON par.tip_oborudovaniya_id = t.id
+ORDER BY p.uniq_code, par.uniq_code;

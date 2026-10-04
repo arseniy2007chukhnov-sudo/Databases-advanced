@@ -1,0 +1,173 @@
+-- 1. Справочники -- DDL
+
+ 
+-- 1.1 Базовые единицы измерения (физическая величина: длина, температура и т.д.)
+CREATE TABLE bazovye_edinicy_izmereniya (
+    id INTEGER NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    CONSTRAINT pk_bazovye_edinicy_izmereniya PRIMARY KEY (id)
+);
+ 
+-- 1.2 Единицы измерения (метр, градус Цельсия, мм рт.ст. и т.д.)
+CREATE TABLE edinicy_izmereniya (
+    id INTEGER NOT NULL,
+    bazovaya_edinica_id INTEGER NOT NULL,
+    short_name VARCHAR(20) NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    CONSTRAINT pk_edinicy_izmereniya PRIMARY KEY (id),
+    CONSTRAINT fk_edinicy_izmereniya_bazovaya FOREIGN KEY (bazovaya_edinica_id)
+        REFERENCES bazovye_edinicy_izmereniya (id)
+);
+ 
+-- 1.3 Типы параметров (высота, температура, давление, направление и
+--     скорость ветра, дальность сноса пуль) - из ТЗ
+CREATE TABLE tipy_parametrov (
+    id INTEGER NOT NULL,
+    edinica_izmereniya_id INTEGER NOT NULL,
+    name VARCHAR(100) NOT NULL,
+    CONSTRAINT pk_tipy_parametrov PRIMARY KEY (id),
+    CONSTRAINT fk_tipy_parametrov_edinica FOREIGN KEY (edinica_izmereniya_id)
+        REFERENCES edinicy_izmereniya (id)
+);
+ 
+
+-- 2. Заполнение справочников данными -- DML
+
+ 
+INSERT INTO bazovye_edinicy_izmereniya (id, name) VALUES (1, 'Длина');
+INSERT INTO bazovye_edinicy_izmereniya (id, name) VALUES (2, 'Температура');
+INSERT INTO bazovye_edinicy_izmereniya (id, name) VALUES (3, 'Давление');
+INSERT INTO bazovye_edinicy_izmereniya (id, name) VALUES (4, 'Угол');
+INSERT INTO bazovye_edinicy_izmereniya (id, name) VALUES (5, 'Скорость');
+ 
+INSERT INTO edinicy_izmereniya (id, bazovaya_edinica_id, short_name, name)
+    VALUES (1, 1, 'м', 'Метр');
+INSERT INTO edinicy_izmereniya (id, bazovaya_edinica_id, short_name, name)
+    VALUES (2, 2, 'C', 'Градус Цельсия');
+INSERT INTO edinicy_izmereniya (id, bazovaya_edinica_id, short_name, name)
+    VALUES (3, 3, 'мм рт.ст.', 'Миллиметр ртутного столба');
+INSERT INTO edinicy_izmereniya (id, bazovaya_edinica_id, short_name, name)
+    VALUES (4, 4, 'д.у.', 'Деление угломера');
+INSERT INTO edinicy_izmereniya (id, bazovaya_edinica_id, short_name, name)
+    VALUES (5, 5, 'м/с', 'Метр в секунду');
+ 
+INSERT INTO tipy_parametrov (id, edinica_izmereniya_id, name) VALUES (1, 1, 'Высота');
+INSERT INTO tipy_parametrov (id, edinica_izmereniya_id, name) VALUES (2, 2, 'Температура');
+INSERT INTO tipy_parametrov (id, edinica_izmereniya_id, name) VALUES (3, 3, 'Давление');
+INSERT INTO tipy_parametrov (id, edinica_izmereniya_id, name) VALUES (4, 4, 'Направление ветра');
+INSERT INTO tipy_parametrov (id, edinica_izmereniya_id, name) VALUES (5, 5, 'Скорость ветра');
+INSERT INTO tipy_parametrov (id, edinica_izmereniya_id, name) VALUES (6, 1, 'Дальность сноса пуль');
+ 
+
+-- 3. Приведение dolzhnosti / tipy_oborudovaniya к ТЗ -- DML
+
+ 
+UPDATE dolzhnosti SET name = 'Рядовой'   WHERE id = 1;
+UPDATE dolzhnosti SET name = 'Лейтенант' WHERE id = 2;
+ 
+UPDATE tipy_oborudovaniya SET name = 'ДМК (Десантный метео комплекс)' WHERE id = 1;
+UPDATE tipy_oborudovaniya SET name = 'ВР (Ветровое ружье)'           WHERE id = 2;
+ 
+
+-- 4. Исправление структуры parametry -- DDL
+
+ 
+ALTER TABLE parametry
+    ADD COLUMN tip_parametra_id INTEGER;
+ 
+
+-- 5. Существующие 4 строки parametry переиспользованы под параметры из ТЗ
+--    -- DML (id и uniq_code не меняются, меняется, что они означают).
+
+ 
+UPDATE parametry
+   SET tip_oborudovaniya_id = 1, tip_parametra_id = 1, value = '100'
+ WHERE id = 1;  -- Высота (ДМК)
+ 
+UPDATE parametry
+   SET tip_oborudovaniya_id = 1, tip_parametra_id = 2, value = '12'
+ WHERE id = 2;  -- Температура (ДМК)
+ 
+UPDATE parametry
+   SET tip_oborudovaniya_id = 2, tip_parametra_id = 1, value = '80'
+ WHERE id = 3;  -- Высота (ВР)
+ 
+UPDATE parametry
+   SET tip_oborudovaniya_id = 2, tip_parametra_id = 2, value = '10'
+ WHERE id = 4;  -- Температура (ВР)
+ 
+
+-- 6. Ограничение целостности на новую колонку -- DD
+
+ 
+ALTER TABLE parametry
+    ADD CONSTRAINT fk_parametry_tip_parametra FOREIGN KEY (tip_parametra_id)
+        REFERENCES tipy_parametrov (id);
+ 
+
+-- 7. Старая свободнотекстовая колонка (NOT NULL) больше не нужна -- DDL
+
+
+ 
+ALTER TABLE parametry
+    DROP COLUMN name;
+ 
+
+-- 8. Переназначение остальных зависимых записей -- DML
+
+ 
+UPDATE polzovateli
+   SET dolzhnost_id = 1                 -- Сидорова -> Рядовой
+ WHERE id = 3;
+ 
+UPDATE pachki
+   SET tip_oborudovaniya_id = 1         -- PCH-003 -> ДМК
+ WHERE id = 3;
+ 
+
+-- 9. Удаление справочных строк, на которые теперь никто не ссылается -- DML
+
+ 
+DELETE FROM dolzhnosti        WHERE id = 3;  -- 'Начальник склада'
+DELETE FROM tipy_oborudovaniya WHERE id = 3;  -- 'Принтер'
+ 
+
+-- 10. Недостающие параметры из ТЗ - новые строки -- DML
+
+ 
+INSERT INTO parametry (id, uniq_code, tip_oborudovaniya_id, tip_parametra_id, value)
+    VALUES (5, 'PAR-005', 1, 3, '34');    -- Давление (ДМК)
+INSERT INTO parametry (id, uniq_code, tip_oborudovaniya_id, tip_parametra_id, value)
+    VALUES (6, 'PAR-006', 1, 4, '0.20');  -- Направление ветра (ДМК)
+INSERT INTO parametry (id, uniq_code, tip_oborudovaniya_id, tip_parametra_id, value)
+    VALUES (7, 'PAR-007', 1, 5, '45');    -- Скорость ветра (ДМК)
+ 
+INSERT INTO parametry (id, uniq_code, tip_oborudovaniya_id, tip_parametra_id, value)
+    VALUES (8, 'PAR-008', 2, 3, '745');   -- Давление (ВР)
+INSERT INTO parametry (id, uniq_code, tip_oborudovaniya_id, tip_parametra_id, value)
+    VALUES (9, 'PAR-009', 2, 4, '5');     -- Направление ветра (ВР)
+INSERT INTO parametry (id, uniq_code, tip_oborudovaniya_id, tip_parametra_id, value)
+    VALUES (10, 'PAR-010', 2, 6, '120');  -- Дальность сноса пуль (ВР)
+ 
+
+-- 11. Основной запрос
+--     Дата измерения | Номер пачки | ФИО сотрудника |
+--     Наименование параметра и ед. измерения | Значение
+
+SELECT
+    p.created_date AS "Дата измерения",
+    p.id AS "Номер пачки",
+    u.full_name AS "ФИО сотрудника",
+    tp.name || ' (' || ei.short_name || ')' AS "Параметр и ед. измерения",
+    par.value AS "Значение"
+FROM pachki p
+    INNER JOIN polzovateli u
+        ON u.id = p.polzovatel_id
+    INNER JOIN parametry par
+        ON par.tip_oborudovaniya_id = p.tip_oborudovaniya_id
+    INNER JOIN tipy_parametrov tp
+        ON tp.id = par.tip_parametra_id
+    INNER JOIN edinicy_izmereniya ei
+        ON ei.id = tp.edinica_izmereniya_id
+ORDER BY
+    p.created_date, p.id, tp.id;

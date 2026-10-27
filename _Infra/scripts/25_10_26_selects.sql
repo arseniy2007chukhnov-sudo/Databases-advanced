@@ -1,41 +1,42 @@
 -- ТЕСТОВЫЕ ДАННЫЕ С ОШИБКАМИ + ЗАПРОСЫ
-
-
--- 1. Тестовые данные (пачки PCH-E01..E06 с намеренными ошибками)
+ 
+ 
+-- 1. Тестовые данные (пачки PCH-E01..E06 с намеренными ошибками). Только DML.
 --    Типы параметров: 1 высота, 2 температура, 3 давление,
 --    4 направление ветра, 5 скорость ветра, 6 дальность сноса пуль
-
-DELETE FROM parametry WHERE uniq_code LIKE 'PAR-E%';
-DELETE FROM pachki    WHERE uniq_code LIKE 'PCH-E%';
  
-INSERT INTO pachki (uniq_code, tip_oborudovaniya_id, polzovatel_id, measured_at) VALUES
-    ('PCH-E01', 1, 2, TIMESTAMP '2026-09-10 09:30:00'),  -- ДМК: давление < 500
-    ('PCH-E02', 1, 2, TIMESTAMP '2026-09-11 10:10:00'),  -- ДМК: направление > 59, скорость > 15
-    ('PCH-E03', 2, 3, TIMESTAMP '2026-09-12 11:20:00'),  -- ВР: температура > 58, дальность > 150
-    ('PCH-E04', 1, 3, TIMESTAMP '2026-09-13 12:40:00'),  -- ДМК: нет скорости ветра, дробное давление
-    ('PCH-E05', 2, 1, TIMESTAMP '2026-09-14 13:50:00'),  -- ВР: лишний параметр "скорость ветра"
-    ('PCH-E06', 1, 1, TIMESTAMP '2026-09-15 14:00:00');  -- ДМК: без ошибок
+DO
+$$
+BEGIN
+    DELETE FROM parametry WHERE uniq_code LIKE 'PAR-E%';
+    DELETE FROM pachki    WHERE uniq_code LIKE 'PCH-E%';
  
-INSERT INTO parametry (uniq_code, pachka_id, tip_parametra_id, value)
-SELECT 'PAR-' || substr(d.pachka, 5) || '-' || d.tip, p.id, d.tip, d.val
-  FROM (VALUES
-        ('PCH-E01', 1, 100), ('PCH-E01', 2, 12), ('PCH-E01', 3, 450),    ('PCH-E01', 4, 10), ('PCH-E01', 5, 5),
-        ('PCH-E02', 1, 100), ('PCH-E02', 2, 15), ('PCH-E02', 3, 750),    ('PCH-E02', 4, 61), ('PCH-E02', 5, 20),
-        ('PCH-E03', 1, 80),  ('PCH-E03', 2, 60.5), ('PCH-E03', 3, 745),  ('PCH-E03', 4, 5),  ('PCH-E03', 6, 200),
-        ('PCH-E04', 1, 100), ('PCH-E04', 2, 20), ('PCH-E04', 3, 750.55), ('PCH-E04', 4, 20),
-        ('PCH-E05', 1, 90),  ('PCH-E05', 2, 14), ('PCH-E05', 3, 748),    ('PCH-E05', 4, 30), ('PCH-E05', 5, 5), ('PCH-E05', 6, 30),
-        ('PCH-E06', 1, 100), ('PCH-E06', 2, 25), ('PCH-E06', 3, 765),    ('PCH-E06', 4, 15), ('PCH-E06', 5, 6)
-       ) AS d (pachka, tip, val)
-       INNER JOIN pachki p ON p.uniq_code = d.pachka;
+    INSERT INTO pachki (uniq_code, tip_oborudovaniya_id, polzovatel_id, measured_at) VALUES
+        ('PCH-E01', 1, 2, TIMESTAMP '2026-09-10 09:30:00'),  -- ДМК: давление < 500
+        ('PCH-E02', 1, 2, TIMESTAMP '2026-09-11 10:10:00'),  -- ДМК: давление 1000.5 (две ошибки), направление > 59, скорость > 15
+        ('PCH-E03', 2, 3, TIMESTAMP '2026-09-12 11:20:00'),  -- ВР: температура > 58, дальность > 150
+        ('PCH-E04', 1, 3, TIMESTAMP '2026-09-13 12:40:00'),  -- ДМК: нет скорости ветра, дробное давление
+        ('PCH-E05', 2, 1, TIMESTAMP '2026-09-14 13:50:00'),  -- ВР: лишний параметр "скорость ветра"
+        ('PCH-E06', 1, 1, TIMESTAMP '2026-09-15 14:00:00');  -- ДМК: без ошибок
  
--- Фиксируем ошибки по каждому значению в parametry (возвращает число записей с ошибками)
-SELECT f_refresh_param_errors() AS "Записей параметров с ошибкой";
+    INSERT INTO parametry (uniq_code, pachka_id, tip_parametra_id, value)
+    SELECT 'PAR-' || substr(d.pachka, 5) || '-' || d.tip, p.id, d.tip, d.val
+      FROM (VALUES
+            ('PCH-E01', 1, 100), ('PCH-E01', 2, 12), ('PCH-E01', 3, 450),    ('PCH-E01', 4, 10), ('PCH-E01', 5, 5),
+            ('PCH-E02', 1, 100), ('PCH-E02', 2, 15), ('PCH-E02', 3, 1000.5),    ('PCH-E02', 4, 61), ('PCH-E02', 5, 20),
+            ('PCH-E03', 1, 80),  ('PCH-E03', 2, 60.5), ('PCH-E03', 3, 745),  ('PCH-E03', 4, 5),  ('PCH-E03', 6, 200),
+            ('PCH-E04', 1, 100), ('PCH-E04', 2, 20), ('PCH-E04', 3, 750.55), ('PCH-E04', 4, 20),
+            ('PCH-E05', 1, 90),  ('PCH-E05', 2, 14), ('PCH-E05', 3, 748),    ('PCH-E05', 4, 30), ('PCH-E05', 5, 5), ('PCH-E05', 6, 30),
+            ('PCH-E06', 1, 100), ('PCH-E06', 2, 25), ('PCH-E06', 3, 765),    ('PCH-E06', 4, 15), ('PCH-E06', 5, 6)
+           ) AS d (pachka, tip, val)
+           INNER JOIN pachki p ON p.uniq_code = d.pachka;
+END
+$$;
  
-
 -- 2. Запрос "Список параметров с ошибками"
 --    № | Тип оборудования | Высота | Температура | Давление | Направление ветра |
 --    Скорость ветра | Дальность сноса пуль | Есть ошибка | Описание ошибки
-
+ 
 WITH batch_params AS (           
     SELECT pa.id AS pachka_id, pa.uniq_code, pa.measured_at, pa.polzovatel_id, pa.tip_oborudovaniya_id,
            MAX(CASE WHEN par.tip_parametra_id = 1 THEN par.value END) AS height,
@@ -68,10 +69,10 @@ SELECT c.uniq_code        AS "№",
        INNER JOIN tipy_oborudovaniya t ON t.id = c.tip_oborudovaniya_id
  ORDER BY CASE WHEN c.errors_text <> '' THEN 0 ELSE 1 END, c.uniq_code;
  
-
+ 
 -- 3. Запрос "Лучший стрелок": пользователи и число ошибок в параметрах
 --    (меньше ошибок - выше место; окно RANK + группировка + CTE)
-
+ 
 WITH batch_params AS (
     SELECT pa.id AS pachka_id, pa.polzovatel_id, pa.tip_oborudovaniya_id,
            MAX(CASE WHEN par.tip_parametra_id = 1 THEN par.value END) AS height,
@@ -134,10 +135,10 @@ SELECT r.place            AS "Место",
   FROM ranked r
  ORDER BY r.place, r.full_name;
  
-
+ 
 -- 4. Ошибки по видам (классификатор tipy_oshibok): количество и доля
 --    (окно SUM() OVER для доли, RANK() для места вида ошибки)
-
+ 
 WITH batch_params AS (
     SELECT pa.id AS pachka_id, pa.tip_oborudovaniya_id,
            MAX(CASE WHEN par.tip_parametra_id = 1 THEN par.value END) AS height,
@@ -175,28 +176,43 @@ SELECT j.uniq_code AS "Код",
   FROM joined j
  ORDER BY j.cnt DESC, j.id;
  
-
--- 5. Ошибочные значения, сохраненные в parametry (has_error + tip_oshibki_id)
-
-WITH bad_values AS (
-    SELECT par.pachka_id, par.tip_parametra_id, par.value, par.tip_oshibki_id
-      FROM parametry par
-     WHERE par.has_error
-)
-SELECT pa.uniq_code AS "№",
-       tp.name      AS "Параметр",
-       bv.value     AS "Значение",
-       ot.name      AS "Вид ошибки"
-  FROM bad_values bv
-       INNER JOIN pachki pa          ON pa.id = bv.pachka_id
-       INNER JOIN tipy_parametrov tp ON tp.id = bv.tip_parametra_id
-       INNER JOIN tipy_oshibok ot    ON ot.id = bv.tip_oshibki_id
- ORDER BY pa.uniq_code, tp.id;
  
-
+-- 5. Все ошибки построчно: одна строка = одна ошибка (текст из классификатора).
+--    Если у параметра две ошибки - будет две строки.
+ 
+WITH batch_params AS (
+    SELECT pa.id AS pachka_id, pa.uniq_code, pa.measured_at, pa.tip_oborudovaniya_id,
+           MAX(CASE WHEN par.tip_parametra_id = 1 THEN par.value END) AS height,
+           MAX(CASE WHEN par.tip_parametra_id = 2 THEN par.value END) AS temperature,
+           MAX(CASE WHEN par.tip_parametra_id = 3 THEN par.value END) AS pressure,
+           MAX(CASE WHEN par.tip_parametra_id = 4 THEN par.value END) AS wind_direction,
+           MAX(CASE WHEN par.tip_parametra_id = 5 THEN par.value END) AS wind_speed,
+           MAX(CASE WHEN par.tip_parametra_id = 6 THEN par.value END) AS bullet_drift
+      FROM pachki pa
+           LEFT JOIN parametry par ON par.pachka_id = pa.id
+     GROUP BY pa.id, pa.uniq_code, pa.measured_at, pa.tip_oborudovaniya_id
+),
+errors AS (
+    SELECT bp.uniq_code, bp.measured_at, e.tip_parametra_id, e.error_code, e.message
+      FROM batch_params bp
+           CROSS JOIN LATERAL f_param_errors(
+               ROW(bp.tip_oborudovaniya_id, bp.height, bp.temperature, bp.pressure,
+                   bp.wind_direction, bp.wind_speed, bp.bullet_drift)::t_meteo_params) e
+)
+SELECT er.uniq_code    AS "№",
+       er.measured_at  AS "Дата измерения",
+       tp.name         AS "Параметр",
+       ot.name         AS "Вид ошибки",
+       er.message      AS "Сообщение"
+  FROM errors er
+       LEFT JOIN tipy_parametrov tp ON tp.id = er.tip_parametra_id
+       INNER JOIN tipy_oshibok ot   ON ot.code = er.error_code
+ ORDER BY er.uniq_code, er.tip_parametra_id, ot.id;
+ 
+ 
 -- 6. Метео приближенный по пачкам (ДДЧЧМ ВВВВ БББТТ).
 --    Для пачек с ошибками расчет не выполняется.
-
+ 
 WITH batch_params AS (
     SELECT pa.id AS pachka_id, pa.uniq_code, pa.measured_at, pa.tip_oborudovaniya_id,
            MAX(CASE WHEN par.tip_parametra_id = 1 THEN par.value END) AS height,
@@ -224,9 +240,9 @@ SELECT c.uniq_code AS "№",
   FROM checked c
  ORDER BY c.measured_at, c.uniq_code;
  
-
+ 
 -- 7. Самопроверка функций по примерам ТЗ
-
+ 
 WITH checks (name, actual, expected) AS (
     VALUES
         ('Поправка ΔTv при t0 = 23 (интерполяция, ТЗ: 1,8)', f_fmt_num(f_virtual_correction(23)), '1.8'),

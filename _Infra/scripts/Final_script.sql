@@ -6,6 +6,7 @@ begin
 	-- ТРАНЗАКЦИЯ 1
 	begin
 		drop procedure if exists public.sp_calc_meteo(public.calc_input_params, integer, refcursor);
+		drop procedure if exists public.sp_calc_meteo(public.calc_input_params, integer);
 		drop function if exists public.fn_calc_meteo_bulletin(public.calc_input_params, integer);
 		drop type if exists public.calc_input_params;
 		drop function if exists public.fn_calc_table_speed(text, integer, numeric);
@@ -575,22 +576,15 @@ begin
 			raise;
 	end;
  
-	-- ТРАНЗАКЦИЯ 7.2. Расчет и процедура
+	-- ТРАНЗАКЦИЯ 7.2. Процедура расчета
 	begin
-		-- Расчет по всем стандартным высотам (читает данные, ничего не меняет)
-		create or replace function public.fn_calc_meteo_bulletin(
-			par_params public.calc_input_params, par_equipment_id integer)
-		returns table (
-			height_m        integer,   -- стандартная высота
-			temp_deviation  integer,   -- среднее отклонение температуры (со знаком)
-			tt              text,      -- ТТ: для отрицательного значения |x| + 50
-			wind_direction  integer,   -- направление среднего ветра, б.д.
-			hh              text,      -- НН: направление, 2 знака
-			wind_speed      integer,   -- скорость среднего ветра, м/с
-			cc              text       -- СС: скорость, 2 знака
-		)
+		-- Расчет Метео приближенный по каждой стандартной высоте.
+		-- Расчет выполняется одним запросом по справочнику высот,
+		-- цикл нужен только для вывода строк (raise notice).
+		create or replace procedure public.sp_calc_meteo(
+			par_params public.calc_input_params,
+			par_equipment_id integer)
 		language plpgsql
-		stable
 		as $fn$
 		declare
 			var_row           record;
@@ -602,7 +596,6 @@ begin
 			var_correction    numeric;
 			var_t0            numeric;
 			var_surface_dev   integer;
-			var_dir_delta     integer;
 			var_divisions     integer;
 			var_neg_offset    integer;
 			var_tmin          numeric;
@@ -613,9 +606,9 @@ begin
 			end if;
  
 			-- Проверка входных данных
-			var_tmin      := public.fn_get_calc_constant('MIN_TEMPERATURE');
-			var_tmax      := public.fn_get_calc_constant('MAX_TEMPERATURE');
-			var_divisions := public.fn_get_calc_constant('DIRECTION_DIVISIONS')::integer;
+			var_tmin       := public.fn_get_calc_constant('MIN_TEMPERATURE');
+			var_tmax       := public.fn_get_calc_constant('MAX_TEMPERATURE');
+			var_divisions  := public.fn_get_calc_constant('DIRECTION_DIVISIONS')::integer;
 			var_neg_offset := public.fn_get_calc_constant('NEG_TEMPERATURE_OFFSET')::integer;
  
 			if par_params.temperature is null or par_params.temperature < var_tmin or par_params.temperature > var_tmax then
@@ -654,6 +647,7 @@ begin
 			end if;
  
 			-- Приземная виртуальная температура и ее отклонение от 15.9.
+			-- Вне диапазона узлов поправка плоская (значение крайнего узла).
 			select min(c.temperature), max(c.temperature)
 			into var_correction, var_t0
 			from public.popravki_virtualnoj_temperatury c;
@@ -663,67 +657,53 @@ begin
 			var_t0          := par_params.temperature + var_correction;
 			var_surface_dev := round(var_t0 - public.fn_get_calc_constant('TABLE_TEMPERATURE'))::integer;
  
+			-- Слабый ветер: направление и скорость нулевые на всех высотах
 			var_calm := var_wind_input < var_min_wind;
  
+			raise notice 'Отклонение приземной виртуальной температуры: %', var_surface_dev;
+ 
 			for var_row in
-				select h.id as height_id, h.height as height_value
+				select h.height as height_m,
+				       t.temp_deviation,
+				       case when var_calm then 0
+				            else public.fn_calc_table_speed(var_speed_code, h.id, var_wind_input)
+				       end as wind_speed,
+				       case when var_calm then 0
+				            else mod(par_params.wind_direction::integer + d.delta, var_divisions)
+				       end as wind_direction,
+				       d.delta
 				from public.calc_correction_heights h
+					cross join lateral (
+						select public.fn_calc_mean_temp_deviation(var_surface_dev, h.id) as temp_deviation
+					) t
+					left join (
+						select c.height_id, c.row_values[1] as delta
+						from public.calc_correction c
+							inner join public.calc_correction_types ct on ct.id = c.type_id
+						where ct.code = var_dir_code
+					) d on d.height_id = h.id
 				order by h.height
 			loop
-				height_m       := var_row.height_value;
-				temp_deviation := public.fn_calc_mean_temp_deviation(var_surface_dev, var_row.height_id);
-				if temp_deviation < 0 then
-					tt := to_char(abs(temp_deviation) + var_neg_offset, 'FM00');
-				else
-					tt := to_char(temp_deviation, 'FM00');
+				if not var_calm and var_row.delta is null then
+					raise exception 'Таблица %: нет приращения направления для высоты %', var_dir_code, var_row.height_m;
 				end if;
  
-				if var_calm then
-					wind_speed     := 0;
-					wind_direction := 0;
-				else
-					wind_speed := public.fn_calc_table_speed(var_speed_code, var_row.height_id, var_wind_input);
- 
-					select c.row_values[1] into var_dir_delta
-					from public.calc_correction c
-						inner join public.calc_correction_types t on t.id = c.type_id
-					where t.code = var_dir_code and c.height_id = var_row.height_id;
-					if var_dir_delta is null then
-						raise exception 'Таблица %: нет приращения направления для высоты %', var_dir_code, var_row.height_value;
-					end if;
- 
-					wind_direction := mod(par_params.wind_direction::integer + var_dir_delta, var_divisions);
-				end if;
- 
-				hh := to_char(wind_direction, 'FM00');
-				cc := to_char(wind_speed, 'FM00');
-				return next;
+				raise notice 'H = %, ТТ = %, НН = %, СС = %',
+					lpad(var_row.height_m::text, 4),
+					to_char(case when var_row.temp_deviation < 0
+					             then abs(var_row.temp_deviation) + var_neg_offset
+					             else var_row.temp_deviation end, 'FM00'),
+					to_char(var_row.wind_direction, 'FM00'),
+					to_char(var_row.wind_speed, 'FM00');
 			end loop;
 		end;
 		$fn$;
  
-		comment on function public.fn_calc_meteo_bulletin(public.calc_input_params, integer)
-			is 'Расчет Метео приближенный по каждой стандартной высоте: ТТ, НН, СС';
- 
-		-- Хранимая процедура: возвращает результат через курсор
-		-- (процедура не может вернуть набор строк напрямую)
-		create or replace procedure public.sp_calc_meteo(
-			par_params public.calc_input_params,
-			par_equipment_id integer,
-			inout par_result refcursor)
-		language plpgsql
-		as $fn$
-		begin
-			open par_result for
-				select * from public.fn_calc_meteo_bulletin(par_params, par_equipment_id);
-		end;
-		$fn$;
- 
-		comment on procedure public.sp_calc_meteo(public.calc_input_params, integer, refcursor)
-			is 'Расчет Метео приближенный: на входе параметры и тип оборудования, на выходе курсор с расчетом по высотам';
+		comment on procedure public.sp_calc_meteo(public.calc_input_params, integer)
+			is 'Расчет Метео приближенный: на входе параметры и тип оборудования, на выходе (notice) ТТ, НН, СС по каждой стандартной высоте';
 	exception
 		when others then
-			raise notice 'Транзакция 7.2 (расчет и процедура) отменена: %', sqlerrm;
+			raise notice 'Транзакция 7.2 (процедура расчета) отменена: %', sqlerrm;
 			raise;
 	end;
  

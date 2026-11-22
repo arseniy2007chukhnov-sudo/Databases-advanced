@@ -1,4 +1,4 @@
--- База данных: Front (Microsoft SQL Server, схема dbo). Синтаксис T-SQL.
+﻿-- База данных: Front (Microsoft SQL Server, схема dbo). Синтаксис T-SQL.
 -- Запросы только читают данные (SELECT). Для скриншота выполняйте по одному.
 
 
@@ -149,3 +149,33 @@ FROM dbo.vendors AS v
 WHERE NOT EXISTS (SELECT 1 FROM dbo.bm_StorageOperations AS so WHERE so.VendorID = v.id)
   AND NOT EXISTS (SELECT 1 FROM dbo.pricelist AS pl WHERE pl.vendorid = v.id)
   AND NOT EXISTS (SELECT 1 FROM dbo.product AS p WHERE p.vendorid = v.id);
+
+
+-- Q3.6 Как текстовые коды поставщика в journal/stockperiod соотносятся с vendors
+-- Цель: В journal.vendorid и stockperiod.vendorid — varchar. Выяснить, ссылаются они на vendors.clientid или на vendors.id.
+-- Ожидание: Высокий matched_pct в одной из строк указывает реальный ключ; в ER для этой связи используется он.
+WITH codes AS (
+    SELECT N'journal' AS source_table, LTRIM(RTRIM(j.vendorid)) AS code
+    FROM dbo.journal AS j
+    WHERE j.vendorid IS NOT NULL AND LTRIM(RTRIM(j.vendorid)) <> ''
+    GROUP BY LTRIM(RTRIM(j.vendorid))
+    UNION ALL
+    SELECT N'stockperiod', LTRIM(RTRIM(sp.vendorid))
+    FROM dbo.stockperiod AS sp
+    WHERE sp.vendorid IS NOT NULL AND LTRIM(RTRIM(sp.vendorid)) <> ''
+    GROUP BY LTRIM(RTRIM(sp.vendorid))
+)
+SELECT c.source_table, N'vendors.clientid' AS target_key, COUNT(*) AS distinct_codes,
+       SUM(CASE WHEN EXISTS (SELECT 1 FROM dbo.vendors AS v WHERE v.clientid = c.code) THEN 1 ELSE 0 END) AS matched,
+       CAST(100.0 * SUM(CASE WHEN EXISTS (SELECT 1 FROM dbo.vendors AS v WHERE v.clientid = c.code) THEN 1 ELSE 0 END)
+            / NULLIF(COUNT(*), 0) AS DECIMAL(5, 1)) AS matched_pct
+FROM codes AS c
+GROUP BY c.source_table
+UNION ALL
+SELECT c.source_table, N'vendors.id', COUNT(*),
+       SUM(CASE WHEN EXISTS (SELECT 1 FROM dbo.vendors AS v WHERE CAST(v.id AS VARCHAR(24)) = c.code) THEN 1 ELSE 0 END),
+       CAST(100.0 * SUM(CASE WHEN EXISTS (SELECT 1 FROM dbo.vendors AS v WHERE CAST(v.id AS VARCHAR(24)) = c.code) THEN 1 ELSE 0 END)
+            / NULLIF(COUNT(*), 0) AS DECIMAL(5, 1))
+FROM codes AS c
+GROUP BY c.source_table
+ORDER BY 1, 2;
